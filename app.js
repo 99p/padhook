@@ -169,6 +169,9 @@ let activeNodes = [];
 let playState = null;
 let animationFrame = 0;
 let toastTimer = 0;
+let audioUnlockAttempted = false;
+let silentAudioUrl = "";
+let silentAudioElement = null;
 
 init();
 
@@ -195,6 +198,7 @@ function init() {
   initTheme();
   setupSelectors();
   bindEvents();
+  installAudioUnlockHandlers();
   const saved = loadStoredState();
   if (saved) {
     state = saved;
@@ -978,7 +982,12 @@ async function togglePlayback() {
     stopPlayback();
     return;
   }
-  await ensureAudioContext();
+  try {
+    await ensureAudioContext();
+  } catch {
+    toast("音声を開始できませんでした。Safariの音量設定を確認してください");
+    return;
+  }
   const startBeat = 0;
   const startTime = audioContext.currentTime + 0.08;
   const secondsPerBeat = 60 / state.tempo;
@@ -998,8 +1007,103 @@ async function ensureAudioContext() {
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
   }
+  await unlockAudioForIOS();
   if (audioContext.state === "suspended") {
     await audioContext.resume();
+  }
+}
+
+function installAudioUnlockHandlers() {
+  const options = { capture: true, passive: true };
+  const unlock = () => {
+    unlockAudioForIOS().then(() => {
+      if (!audioUnlockAttempted) return;
+      for (const eventName of ["touchstart", "touchend", "pointerdown", "mousedown", "keydown"]) {
+        window.removeEventListener(eventName, unlock, options);
+      }
+    });
+  };
+  for (const eventName of ["touchstart", "touchend", "pointerdown", "mousedown", "keydown"]) {
+    window.addEventListener(eventName, unlock, options);
+  }
+}
+
+async function unlockAudioForIOS() {
+  if (audioUnlockAttempted) return;
+  audioUnlockAttempted = true;
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  const htmlAudioPromise = playSilentHtmlAudio();
+  playSilentWebAudioBuffer();
+
+  if (audioContext.state === "suspended") {
+    await audioContext.resume().catch(() => null);
+  }
+  await htmlAudioPromise;
+}
+
+async function playSilentHtmlAudio() {
+  const audio = getSilentAudioElement();
+  try {
+    audio.currentTime = 0;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+  } catch {
+    audioUnlockAttempted = false;
+  }
+}
+
+function playSilentWebAudioBuffer() {
+  const source = audioContext.createBufferSource();
+  const gain = audioContext.createGain();
+  source.buffer = audioContext.createBuffer(1, 1, 22050);
+  gain.gain.value = 0.00001;
+  source.connect(gain).connect(audioContext.destination);
+  source.start(0);
+  source.stop(audioContext.currentTime + 0.01);
+  activeNodes.push(source);
+}
+
+function getSilentAudioElement() {
+  if (!silentAudioElement) {
+    silentAudioElement = new Audio(getSilentAudioUrl());
+    silentAudioElement.preload = "auto";
+    silentAudioElement.setAttribute("playsinline", "");
+    silentAudioElement.volume = 0.01;
+  }
+  return silentAudioElement;
+}
+
+function getSilentAudioUrl() {
+  if (silentAudioUrl) return silentAudioUrl;
+  const sampleRate = 8000;
+  const sampleCount = 80;
+  const bytesPerSample = 2;
+  const buffer = new ArrayBuffer(44 + sampleCount * bytesPerSample);
+  const view = new DataView(buffer);
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + sampleCount * bytesPerSample, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 8 * bytesPerSample, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, sampleCount * bytesPerSample, true);
+  silentAudioUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+  return silentAudioUrl;
+}
+
+function writeAscii(view, offset, text) {
+  for (let index = 0; index < text.length; index += 1) {
+    view.setUint8(offset + index, text.charCodeAt(index));
   }
 }
 
