@@ -81,11 +81,15 @@
           <div class="timeline-head">
             <div>
               <h2>スケッチ</h2>
-              <p>タップで位置を選び、下のパレットで入力。</p>
+              <p id="pageStatus">1-2小節 / 8</p>
             </div>
-            <button id="addMeasureButton" type="button">+ 小節</button>
+            <div class="measure-pager" aria-label="表示小節">
+              <button id="prevPageButton" type="button" aria-label="前の小節">前</button>
+              <button id="nextPageButton" type="button" aria-label="次の小節">次</button>
+              <button id="addMeasureButton" type="button">+ 小節</button>
+            </div>
           </div>
-          <div class="timeline-scroll" id="timelineScroll" tabindex="0" aria-label="横スクロール可能な譜面">
+          <div class="timeline-scroll" id="timelineScroll" tabindex="0" aria-label="ページ切り替え式の譜面">
             <div class="timeline-surface" id="timelineSurface">
               <div class="ruler" id="ruler" aria-hidden="true"></div>
               <div class="chord-lane" id="chordLane" aria-label="コードレーン"></div>

@@ -40,7 +40,7 @@
   --chord-h: 72px;
   --row-h: 34px;
   --melody-h: 238px;
-  --dock-h: 304px;
+  --dock-h: 330px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -311,12 +311,21 @@ input:focus-visible,
   padding: 0 12px;
 }
 
+.measure-pager {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.measure-pager button {
+  min-width: 50px;
+}
+
 .timeline-scroll {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
   background: var(--surface-alt);
 }
 
@@ -521,7 +530,7 @@ input:focus-visible,
 
 .dock-panel {
   height: calc(var(--dock-h) - 50px);
-  overflow: auto;
+  overflow: hidden;
   padding: 8px;
 }
 
@@ -674,7 +683,7 @@ input:focus-visible,
 
 @media (min-width: 720px) {
   :root {
-    --dock-h: 248px;
+    --dock-h: 280px;
     --beat-w: 62px;
     --measure-w: 248px;
     --row-h: 36px;
@@ -687,10 +696,6 @@ input:focus-visible,
 
   .song-status {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .dock-panel {
-    overflow: auto;
   }
 
   .degree-grid {
@@ -708,7 +713,7 @@ input:focus-visible,
   :root {
     --beat-w: 50px;
     --measure-w: 200px;
-    --dock-h: 322px;
+    --dock-h: 334px;
   }
 
   body {
@@ -743,6 +748,112 @@ input:focus-visible,
 
   .duration-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 719px) {
+  button {
+    min-height: 42px;
+  }
+
+  .composer {
+    padding: 10px;
+  }
+
+  .control-strip,
+  .project-strip,
+  .song-status {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .control-strip select,
+  .control-strip input {
+    min-height: 42px;
+  }
+
+  .project-strip button {
+    min-height: 42px;
+    padding: 0 6px;
+    font-size: 0.82rem;
+  }
+
+  .timeline-head {
+    padding: 10px;
+  }
+
+  .measure-pager button {
+    min-width: 44px;
+    padding: 0 8px;
+  }
+
+  .mode-tabs {
+    gap: 4px;
+    padding: 6px 6px 0;
+  }
+
+  .mode-tab {
+    min-height: 38px;
+    font-size: 0.88rem;
+  }
+
+  .dock-panel {
+    height: calc(var(--dock-h) - 44px);
+    padding: 6px;
+  }
+
+  .palette-header {
+    min-height: 38px;
+    margin-bottom: 6px;
+  }
+
+  .palette-header h2 {
+    font-size: 0.94rem;
+  }
+
+  .palette-header p {
+    display: none;
+  }
+
+  .duration-row,
+  .degree-grid,
+  .edit-row,
+  .export-grid,
+  .suggestion-list {
+    gap: 6px;
+  }
+
+  .duration-row {
+    margin-bottom: 6px;
+  }
+
+  .degree-button {
+    min-height: 46px;
+    padding: 4px;
+    font-size: 0.9rem;
+  }
+
+  .degree-button small {
+    margin-top: 1px;
+    font-size: 0.62rem;
+  }
+
+  .edit-row {
+    margin-top: 6px;
+  }
+
+  .suggestion-button {
+    grid-template-columns: 1fr auto;
+    min-height: 42px;
+    padding: 4px 8px;
+  }
+
+  .suggestion-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .suggestion-button span {
+    display: none;
   }
 }
 

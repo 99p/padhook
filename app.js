@@ -126,6 +126,9 @@ const els = {
   redoButton: $("#redoButton"),
   newButton: $("#newButton"),
   addMeasureButton: $("#addMeasureButton"),
+  prevPageButton: $("#prevPageButton"),
+  nextPageButton: $("#nextPageButton"),
+  pageStatus: $("#pageStatus"),
   positionStatus: $("#positionStatus"),
   activeChordStatus: $("#activeChordStatus"),
   guideStatus: $("#guideStatus"),
@@ -172,6 +175,7 @@ let toastTimer = 0;
 let audioUnlockAttempted = false;
 let silentAudioUrl = "";
 let silentAudioElement = null;
+let viewStartMeasure = 0;
 
 init();
 
@@ -266,6 +270,8 @@ function bindEvents() {
   els.addMeasureButton.addEventListener("click", () => commit(() => {
     state.measures += 1;
   }));
+  els.prevPageButton.addEventListener("click", () => setViewPage(-1));
+  els.nextPageButton.addEventListener("click", () => setViewPage(1));
 
   els.chordLane.addEventListener("pointerdown", handleChordLanePointer);
   els.melodyLane.addEventListener("pointerdown", handleMelodyLanePointer);
@@ -301,6 +307,7 @@ function bindEvents() {
   }
 
   window.addEventListener("keydown", handleKeyboard);
+  window.addEventListener("resize", () => render());
   window.addEventListener("pagehide", saveStoredState);
 }
 
@@ -461,6 +468,7 @@ function nextAvailableId() {
 }
 
 function render() {
+  ensureCursorVisible();
   syncMode();
   renderDurationRows();
   renderPalettes();
@@ -535,7 +543,12 @@ function degreeButton({ degree, label, subLabel, stable }) {
 }
 
 function renderTimeline() {
-  const width = totalBeats() * beatWidth();
+  clampViewStart();
+  const visibleBeats = visibleBeatCount();
+  const availableWidth = Math.max(1, els.timelineScroll.clientWidth || window.innerWidth);
+  const nextBeatWidth = Math.max(26, availableWidth / visibleBeats);
+  document.documentElement.style.setProperty("--beat-w", `${nextBeatWidth}px`);
+  const width = visibleBeats * nextBeatWidth;
   els.timelineSurface.style.width = `${width}px`;
   els.timelineSurface.style.setProperty("--meter", state.meter);
   els.timelineSurface.style.setProperty("--measure-w", `${state.meter * beatWidth()}px`);
@@ -551,13 +564,15 @@ function renderTimeline() {
 
 function renderRuler() {
   els.ruler.textContent = "";
-  for (let measure = 0; measure < state.measures; measure += 1) {
+  for (let measure = viewStartMeasure; measure < viewEndMeasure(); measure += 1) {
     const label = document.createElement("div");
     label.className = "measure-label";
-    label.style.left = `${measure * state.meter * beatWidth() + 4}px`;
+    label.style.left = `${(measure - viewStartMeasure) * state.meter * beatWidth() + 4}px`;
     label.textContent = `${measure + 1}`;
     els.ruler.append(label);
   }
+  const end = Math.min(viewEndMeasure(), state.measures);
+  els.pageStatus.textContent = `${viewStartMeasure + 1}-${end}小節 / ${state.measures}`;
 }
 
 function renderChordLane() {
@@ -566,13 +581,14 @@ function renderChordLane() {
   hit.className = "lane-hit";
   els.chordLane.append(hit);
 
-  for (const chord of state.chords) {
+  for (const chord of visibleItems(state.chords)) {
+    const layout = itemLayout(chord);
     const block = document.createElement("button");
     block.type = "button";
     block.className = "block chord-block";
     block.classList.toggle("selected", isSelected("chord", chord.id));
-    block.style.left = `${chord.beat * beatWidth() + 3}px`;
-    block.style.width = `${Math.max(chord.duration * beatWidth() - 6, 28)}px`;
+    block.style.left = `${layout.left + 3}px`;
+    block.style.width = `${Math.max(layout.width - 6, 28)}px`;
     block.style.background = chord.rest ? "#d8dadd" : DEGREE_COLORS[chord.degree - 1];
     block.dataset.id = String(chord.id);
     block.innerHTML = `<span class="chord-symbol">${escapeHtml(chordSymbol(chord))}</span><span class="chord-meta">${escapeHtml(chordMeta(chord))}</span>`;
@@ -608,15 +624,16 @@ function renderMelodyLane() {
     }
   }
 
-  for (const note of state.notes) {
+  for (const note of visibleItems(state.notes)) {
+    const layout = itemLayout(note);
     const block = document.createElement("button");
     block.type = "button";
     block.className = "block note-block";
     block.classList.toggle("rest", note.rest);
     block.classList.toggle("selected", isSelected("note", note.id));
-    block.style.left = `${note.beat * beatWidth() + 3}px`;
+    block.style.left = `${layout.left + 3}px`;
     block.style.top = `${rowTopForDegree(note.degree) + 4}px`;
-    block.style.width = `${Math.max(note.duration * beatWidth() - 6, 28)}px`;
+    block.style.width = `${Math.max(layout.width - 6, 28)}px`;
     block.style.background = note.rest ? "" : DEGREE_COLORS[note.degree - 1];
     block.dataset.id = String(note.id);
     block.textContent = note.rest ? "休" : `${note.degree}${note.octaveLabel || octaveMark(note.octave)}`;
@@ -664,6 +681,8 @@ function renderStatus() {
 function renderButtons() {
   els.undoButton.disabled = !state.history.length;
   els.redoButton.disabled = !state.future.length;
+  els.prevPageButton.disabled = viewStartMeasure <= 0;
+  els.nextPageButton.disabled = viewStartMeasure >= maxViewStartMeasure();
   const selectedChord = selectedItem("chord");
   const selectedNote = selectedItem("note");
   els.deleteButtonChords.disabled = !state.selected;
@@ -897,6 +916,19 @@ function setMode(mode) {
   updateView(() => {
     state.mode = mode;
   }, true);
+}
+
+function setViewPage(delta) {
+  updateView(() => {
+    const step = visibleMeasureCount();
+    viewStartMeasure = clamp(viewStartMeasure + delta * step, 0, maxViewStartMeasure());
+    const start = viewStartBeat();
+    const end = viewEndBeat();
+    if (state.cursorBeat < start || state.cursorBeat >= end) {
+      state.cursorBeat = clampBeat(start);
+      state.selected = null;
+    }
+  });
 }
 
 function loadDemo(withHistory) {
@@ -1203,6 +1235,11 @@ function animatePlayhead() {
   if (!playState || !audioContext) return;
   const elapsed = audioContext.currentTime - playState.startTime;
   const beat = clamp(elapsed / playState.secondsPerBeat + playState.startBeat, 0, totalBeats());
+  if (beat < viewStartBeat() || beat >= viewEndBeat()) {
+    viewStartMeasure = clamp(Math.floor(beat / state.meter), 0, maxViewStartMeasure());
+    renderTimeline();
+    renderButtons();
+  }
   setLinePosition(els.playheadLine, beat);
   if (beat >= totalBeats()) {
     state.cursorBeat = 0;
@@ -1221,6 +1258,61 @@ function totalBeats() {
   return state.measures * state.meter;
 }
 
+function visibleMeasureCount() {
+  if (window.innerWidth >= 900) return Math.min(4, state.measures);
+  if (window.innerWidth >= 720) return Math.min(3, state.measures);
+  return state.meter === 6 ? 1 : Math.min(2, state.measures);
+}
+
+function visibleBeatCount() {
+  return visibleMeasureCount() * state.meter;
+}
+
+function viewStartBeat() {
+  return viewStartMeasure * state.meter;
+}
+
+function viewEndMeasure() {
+  return Math.min(state.measures, viewStartMeasure + visibleMeasureCount());
+}
+
+function viewEndBeat() {
+  return viewEndMeasure() * state.meter;
+}
+
+function maxViewStartMeasure() {
+  return Math.max(0, state.measures - visibleMeasureCount());
+}
+
+function clampViewStart() {
+  viewStartMeasure = clamp(Math.floor(viewStartMeasure) || 0, 0, maxViewStartMeasure());
+}
+
+function ensureCursorVisible() {
+  clampViewStart();
+  const cursorMeasure = Math.floor(state.cursorBeat / state.meter);
+  if (cursorMeasure < viewStartMeasure) {
+    viewStartMeasure = cursorMeasure;
+  } else if (cursorMeasure >= viewEndMeasure()) {
+    viewStartMeasure = clamp(cursorMeasure - visibleMeasureCount() + 1, 0, maxViewStartMeasure());
+  }
+}
+
+function visibleItems(items) {
+  const start = viewStartBeat();
+  const end = viewEndBeat();
+  return items.filter((item) => item.beat < end && item.beat + item.duration > start);
+}
+
+function itemLayout(item) {
+  const start = Math.max(item.beat, viewStartBeat());
+  const end = Math.min(item.beat + item.duration, viewEndBeat());
+  return {
+    left: (start - viewStartBeat()) * beatWidth(),
+    width: Math.max(0.5 * beatWidth(), (end - start) * beatWidth())
+  };
+}
+
 function beatWidth() {
   return Number(getComputedStyle(document.documentElement).getPropertyValue("--beat-w").replace("px", "")) || 56;
 }
@@ -1237,7 +1329,7 @@ function beatFromEvent(event) {
   const rect = els.timelineSurface.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const raw = x / beatWidth();
-  return clampBeat(Math.round(raw * 2) / 2);
+  return clampBeat(viewStartBeat() + Math.round(raw * 2) / 2);
 }
 
 function degreeFromEvent(event) {
@@ -1252,7 +1344,9 @@ function clampBeat(beat) {
 }
 
 function setLinePosition(line, beat) {
-  line.style.left = `${beat * beatWidth()}px`;
+  const localBeat = beat - viewStartBeat();
+  line.style.left = `${localBeat * beatWidth()}px`;
+  line.style.display = localBeat < 0 || localBeat > visibleBeatCount() ? "none" : "block";
 }
 
 function ensureMeasuresFor(beatEnd) {
@@ -1395,16 +1489,8 @@ function selectedItem(type = state.selected?.type) {
 }
 
 function scrollCursorIntoView() {
-  requestAnimationFrame(() => {
-    const left = state.cursorBeat * beatWidth();
-    const visibleLeft = els.timelineScroll.scrollLeft;
-    const visibleRight = visibleLeft + els.timelineScroll.clientWidth;
-    if (left < visibleLeft + 32) {
-      els.timelineScroll.scrollTo({ left: Math.max(0, left - 32), behavior: "smooth" });
-    } else if (left > visibleRight - 80) {
-      els.timelineScroll.scrollTo({ left: left - els.timelineScroll.clientWidth + 80, behavior: "smooth" });
-    }
-  });
+  ensureCursorVisible();
+  render();
 }
 
 function exportJson() {
